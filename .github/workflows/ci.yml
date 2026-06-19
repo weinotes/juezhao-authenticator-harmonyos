@@ -196,5 +196,5 @@ jobs:
           echo "OK: No INTERNET permission (offline app)"
 
       - name: Run CodeQL
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         continue-on-error: true
