@@ -23,6 +23,9 @@ on:
 jobs:
   build-harmonyos:
     runs-on: ubuntu-latest
+    container:
+      image: HarmonyOS/hvigor:latest
+      options: --privileged
     defaults:
       run:
         working-directory: harmonyos/juezhao_authenticator
@@ -31,71 +34,32 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Download and install ohpm
+      - name: Verify environment
         run: |
-          cd $HOME
-          
-          # 下载 ohpm CLI
-          curl -L -o ohpm.tar.gz "https://repo.huaweicloud.com/ohpm-cli/5.1.1/ohpm-linux-x64.tar.gz"
-          
-          # 解压
-          tar -xzf ohpm.tar.gz
-          
-          # 设置环境变量
-          echo "$HOME/ohpm-cli-5.1.1/bin" >> $GITHUB_PATH
-          
-          # 验证安装
-          ls -la $HOME/ohpm-cli-5.1.1/bin/
-          
-      - name: Configure ohpm registry
-        run: |
-          export PATH="$HOME/ohpm-cli-5.1.1/bin:$PATH"
-          ohpm config set registry https://repo.huaweicloud.com/repository/npm/
-          ohpm --version
+          echo "=== Environment Info ==="
+          echo "ohpm version:"
+          ohpm --version 2>/dev/null || echo "ohpm not found"
+          echo ""
+          echo "hvigor version:"
+          hvigor --version 2>/dev/null || echo "hvigor not found"
+          echo ""
+          echo "node version:"
+          node --version
+          echo ""
+          echo "java version:"
+          java -version 2>&1
 
       - name: Install dependencies
-        run: |
-          export PATH="$HOME/ohpm-cli-5.1.1/bin:$PATH"
-          ohpm install
-
-      - name: Download HarmonyOS SDK
-        run: |
-          mkdir -p $HOME/HarmonyOS/sdk
-          cd $HOME/HarmonyOS/sdk
-          
-          # 下载 OpenHarmony SDK（基础工具）
-          curl -L -o cmdline-tools.tar.gz "https://repo.huaweicloud.com/openharmony/3.2.14.5/code_editor_toolchains/cmdline-tools-linux.tar.gz"
-          tar -xzf cmdline-tools.tar.gz
-          
-          # 设置 SDK 路径
-          echo "HarmonyOS_SDK_HOME=$HOME/HarmonyOS/sdk" >> $GITHUB_ENV
-          echo "PATH=$HOME/HarmonyOS/sdk/cmdline-tools/latest/bin:$PATH" >> $GITHUB_PATH
+        run: ohpm install
 
       - name: Build HAP
-        env:
-          PATH: "$HOME/ohpm-cli-5.1.1/bin:$HOME/HarmonyOS/sdk/cmdline-tools/latest/bin:$PATH"
-          HarmonyOS_SDK_HOME: "$HOME/HarmonyOS/sdk"
         run: |
           BUILD_TYPE="${{ github.event_name == 'workflow_dispatch' && inputs.build_type || 'debug' }}"
           
-          # 创建本地.properties 文件
-          echo "sdk.dir=$HOME/HarmonyOS/sdk" > local.properties
-          
           if [ "$BUILD_TYPE" = "release" ]; then
-            npx @ohos/hvigor assembleRelease --no-daemon
+            hvigor assembleRelease --no-daemon
           else
-            npx @ohos/hvigor assembleDebug --no-daemon
+            hvigor assembleDebug --no-daemon
           fi
 
       - name: Find HAP files
@@ -112,11 +76,17 @@ jobs:
             echo "hap_count=0" >> $GITHUB_OUTPUT
           fi
 
+      - name: List build outputs
+        if: steps.find_hap.outputs.hap_found == 'true'
+        run: |
+          echo "=== Build Artifacts ==="
+          find ./entry/build -name "*.hap" -exec ls -lh {} \;
+
       - name: Upload HAP artifact
         if: steps.find_hap.outputs.hap_found == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: juezhao-authenticator-harmonyos-hap
+          name: juezhao-authenticator-harmonyos-hap-${{ github.run_id }}
           path: ./entry/build/**/*.hap
           retention-days: 30
 
