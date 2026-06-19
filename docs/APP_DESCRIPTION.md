@@ -11,7 +11,7 @@
 | 版本号 | 1.0.0 |
 | 最低版本 | HarmonyOS NEXT |
 | 应用分类 | 工具 > 安全工具 |
-| 开发商 | 觉照科技 |
+| 开发商 | Davey Wong |
 
 ## 应用图标 | App Icon
 
@@ -109,9 +109,9 @@ v1.0.0（2024年）
 
 **【联系方式】**
 
-官方网站：https://www.juezhaotrade.com
-技术支持邮箱：support@juezhaotrade.com
-安全漏洞报告：security@juezhaotrade.com
+官方网站：https://guangweiblog.com
+技术支持邮箱：wgwcko@gmail.com
+安全漏洞报告：wgwcko@gmail.com
 
 ---
 
@@ -161,9 +161,9 @@ We promise:
 
 **Contact**
 
-Website: https://www.juezhaotrade.com
-Support: support@juezhaotrade.com
-Security: security@juezhaotrade.com
+Website: https://guangweiblog.com
+Support: wgwcko@gmail.com
+Security: wgwcko@gmail.com
 
 ## 截图要求 | Screenshots
 
@@ -219,7 +219,7 @@ Security: security@juezhaotrade.com
 
 **六、联系我们**
 
-如对本隐私政策有任何疑问，请联系：privacy@juezhaotrade.com
+如对本隐私政策有任何疑问，请联系：wgwcko@gmail.com
 
 ---
 
@@ -261,7 +261,7 @@ juezhao-authenticator does not collect any personal information. We do not:
 
 **6. Contact Us**
 
-For privacy concerns, contact: privacy@juezhaotrade.com
+For privacy concerns, contact: wgwcko@gmail.com
 
 ## 合规清单 | Compliance Checklist
 
@@ -279,10 +279,10 @@ For privacy concerns, contact: privacy@juezhaotrade.com
 
 | 项目 | 内容 |
 |------|------|
-| 开发者名称 | 觉照科技 |
+| 开发者名称 | Davey Wong |
 | 开发者类型 | 企业开发者 |
 | 营业执照 | 待上传 |
 | 联系人 | 待填写 |
 | 联系电话 | 待填写 |
-| 邮箱 | contact@juezhaotrade.com |
+| 邮箱 | wgwcko@gmail.com |
 | 地址 | 待填写 |
