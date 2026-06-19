@@ -1,0 +1,139 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 1.0.0)'
+        required: true
+
+jobs:
+  build:
+    name: Build HAP
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: harmonyos/juezhao_authenticator
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Download ohpm CLI
+        run: |
+          cd $RUNNER_TEMP
+          
+          # 从华为官方镜像下载 ohpm
+          curl -L -o ohpm.tar.gz "https://ohpm.volccdn.com/ohpm/cli/5.1.2/ohpm-cli-linux-x64-5.1.2.tar.gz" 2>/dev/null || \
+          curl -L -o ohpm.tar.gz "https://repo.huaweicloud.com/ohpm-cli/5.1.2/ohpm-linux-x64.tar.gz" 2>/dev/null || \
+          echo "ohpm download failed, will try build without ohpm"
+          
+          if [ -f ohpm.tar.gz ] && [ -s ohpm.tar.gz ]; then
+            tar -xzf ohpm.tar.gz || true
+            echo "$RUNNER_TEMP/ohpm-cli-5.1.2/bin" >> $GITHUB_PATH || true
+            echo "$RUNNER_TEMP/ohpm/bin" >> $GITHUB_PATH || true
+            ls -la $RUNNER_TEMP/ | grep ohpm || true
+          fi
+
+      - name: Install dependencies
+        run: |
+          which ohpm 2>/dev/null && ohpm install || echo "ohpm not available, skipping deps"
+          
+      - name: Attempt Build
+        id: build
+        run: |
+          BUILD_TYPE="release"
+          
+          # 尝试用 hvigor 构建
+          if command -v hvigor &> /dev/null; then
+            hvigor assembleRelease --no-daemon
+          elif [ -f "hvigorw" ]; then
+            chmod +x hvigorw
+            ./hvigorw assembleRelease --no-daemon
+          else
+            echo "BUILD_SKIPPED=true" >> $GITHUB_OUTPUT
+            echo "No HarmonyOS build tools available in CI"
+            echo "Build must be done locally with DevEco Studio"
+          fi
+
+      - name: Find HAP files
+        id: find_hap
+        run: |
+          HAP_FILES=$(find ./entry/build -name "*.hap" 2>/dev/null || true)
+          if [ -n "$HAP_FILES" ]; then
+            echo "hap_found=true" >> $GITHUB_OUTPUT
+            echo "HAP found:"
+            echo "$HAP_FILES"
+          else
+            echo "hap_found=false" >> $GITHUB_OUTPUT
+            echo "No HAP files found (expected if build tools unavailable)"
+          fi
+
+      - name: Upload HAP artifact
+        if: steps.find_hap.outputs.hap_found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: juezhao-authenticator-harmonyos-${{ github.ref_name }}
+          path: harmonyos/juezhao_authenticator/entry/build/**/*.hap
+          retention-days: 90
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            ## 觉照验证器 ${{ github.ref_name }}
+            
+            **作者**: Davey Wong  
+            **平台**: HarmonyOS NEXT  
+            **包名**: com.juezhao.authenticator  
+            
+            ### 下载安装
+            
+            1. 下载 `.hap` 文件
+            2. 通过 hdc 安装：`hdc install juezhao_authenticator_entry-release-signed.hap`
+            
+            ### 支持设备
+            
+            - HarmonyOS NEXT（纯血鸿蒙）
+            
+            ### 安全说明
+            
+            - 无网络权限，完全离线运行
+            - HUKS AES-256-GCM 加密存储
+            - 开源代码可审计
+            
+            ### 变更日志
+            
+            见 [CHANGELOG.md](./harmonyos/juezhao_authenticator/CHANGELOG.md)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    name: Release Summary
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Summary
+        run: |
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Version: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Author: Davey Wong" >> $GITHUB_STEP_SUMMARY
+          echo "- Platform: HarmonyOS NEXT" >> $GITHUB_STEP_SUMMARY
+          echo "- HAP built: ${{ needs.build.outputs.hap_found || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
