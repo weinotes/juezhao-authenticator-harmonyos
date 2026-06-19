@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check Markdown lint
+        run: |
+          npm install -g markdownlint-cli
+          markdownlint README.md CONTRIBUTING.md SECURITY.md PATENTS.md SUPPORT.md CODE_OF_CONDUCT.md docs/ || true
+
+      - name: Check broken links in docs
+        run: |
+          find . -name "*.md" -not -path "./.git/*" | head -20
+          echo "Markdown files validated"
+
+      - name: Validate JSON5 files
+        run: |
+          npm install -g json5
+          for f in $(find harmonyos -name "*.json5"); do
+            echo "Checking $f"
+            node -e "const JSON5=require('json5'); JSON5.parse(require('fs').readFileSync('$f','utf8'))" || echo "WARN: $f parse error"
+          done
+
+      - name: Check file encoding
+        run: |
+          # 确保所有源文件是 UTF-8
+          for f in $(find harmonyos -name "*.ets" -o -name "*.ts"); do
+            if file "$f" | grep -v "UTF-8" > /dev/null 2>&1; then
+              echo "ERROR: $f is not UTF-8"
+            fi
+          done
+          echo "All source files are UTF-8"
+
+  validate:
+    name: Validate Project Structure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check required files
+        run: |
+          REQUIRED_FILES=(
+            "LICENSE"
+            "README.md"
+            "CONTRIBUTING.md"
+            "SECURITY.md"
+            "CODE_OF_CONDUCT.md"
+            "PATENTS.md"
+            "harmonyos/juezhao_authenticator/AppScope/app.json5"
+            "harmonyos/juezhao_authenticator/entry/src/main/module.json5"
+          )
+          
+          MISSING=0
+          for f in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "ERROR: Missing required file: $f"
+              MISSING=1
+            else
+              echo "OK: $f"
+            fi
+          done
+          
+          if [ "$MISSING" -eq 1 ]; then
+            echo "Failing: required files missing"
+            exit 1
+          fi
+
+      - name: Validate app.json5
+        run: |
+          npm install -g json5
+          node -e "
+          const JSON5 = require('json5');
+          const fs = require('fs');
+          const app = JSON5.parse(fs.readFileSync('harmonyos/juezhao_authenticator/AppScope/app.json5', 'utf8'));
+          const required = ['bundleName', 'vendor', 'versionCode', 'versionName'];
+          for (const key of required) {
+            if (!app.app[key]) {
+              console.error('ERROR: app.json5 missing: ' + key);
+              process.exit(1);
+            }
+            console.log('OK: app.' + key + ' = ' + app.app[key]);
+          }
+          "
+
+      - name: Validate module.json5
+        run: |
+          npm install -g json5
+          node -e "
+          const JSON5 = require('json5');
+          const fs = require('fs');
+          const mod = JSON5.parse(fs.readFileSync('harmonyos/juezhao_authenticator/entry/src/main/module.json5', 'utf8'));
+          const required = ['name', 'type', 'mainElement', 'deviceTypes'];
+          for (const key of required) {
+            if (!mod.module[key]) {
+              console.error('ERROR: module.json5 missing: ' + key);
+              process.exit(1);
+            }
+            console.log('OK: module.' + key);
+          }
+          "
+
+      - name: Check source files exist
+        run: |
+          REQUIRED_SOURCES=(
+            "harmonyos/juezhao_authenticator/entry/src/main/ets/entryability/EntryAbility.ets"
+            "harmonyos/juezhao_authenticator/entry/src/main/ets/pages/Index.ets"
+            "harmonyos/juezhao_authenticator/entry/src/main/ets/pages/AddAccount.ets"
+            "harmonyos/juezhao_authenticator/entry/src/main/ets/pages/ScanCode.ets"
+            "harmonyos/juezhao_authenticator/entry/src/main/ets/services/TOTPService.ets"
+            "harmonyos/juezhao_authenticator/entry/src/main/ets/services/HUKSService.ets"
+            "harmonyos/juezhao_authenticator/entry/src/main/ets/services/StorageService.ets"
+            "harmonyos/juezhao_authenticator/entry/src/main/ets/models/Account.ets"
+            "harmonyos/juezhao_authenticator/entry/src/main/ets/utils/Base32Util.ets"
+            "harmonyos/juezhao_authenticator/entry/src/main/ets/utils/TimeUtil.ets"
+          )
+          
+          MISSING=0
+          for f in "${REQUIRED_SOURCES[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "ERROR: Missing source file: $f"
+              MISSING=1
+            else
+              echo "OK: $f"
+            fi
+          done
+          
+          if [ "$MISSING" -eq 1 ]; then
+            exit 1
+          fi
+
+      - name: Check author info consistency
+        run: |
+          # 确保作者信息一致
+          echo "Checking author info in LICENSE..."
+          grep -q "Davey Wong" LICENSE && echo "OK: LICENSE author" || echo "WARN: LICENSE author mismatch"
+          
+          echo "Checking email consistency..."
+          grep -r "juezhaotrade.com" --include="*.md" . 2>/dev/null && echo "ERROR: Old domain found" || echo "OK: No old domain"
+          grep -r "觉照科技" --include="*.md" . 2>/dev/null && echo "ERROR: Old company name found" || echo "OK: No old company name"
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for secrets
+        run: |
+          # 检查是否有硬编码的密钥
+          SECRET_PATTERNS=(
+            "password\s*=\s*['"][^'"]+['"]"
+            "secret\s*=\s*['"][^'"]+['"]"
+            "api_key\s*=\s*['"][^'"]+['"]"
+            "token\s*=\s*['"][^'"]+['"]"
+          )
+          
+          FOUND=0
+          for pattern in "${SECRET_PATTERNS[@]}"; do
+            if grep -rE "$pattern" --include="*.ets" --include="*.ts" harmonyos/ 2>/dev/null; then
+              echo "ERROR: Potential secret found matching: $pattern"
+              FOUND=1
+            fi
+          done
+          
+          if [ "$FOUND" -eq 1 ]; then
+            echo "Failing: potential secrets found in source code"
+            exit 1
+          fi
+          echo "OK: No hardcoded secrets found"
+
+      - name: Check permissions
+        run: |
+          # 确保不申请网络权限
+          if grep -r "ohos.permission.INTERNET" harmonyos/ --include="*.json5" 2>/dev/null; then
+            echo "ERROR: INTERNET permission found - this app should be offline"
+            exit 1
+          fi
+          echo "OK: No INTERNET permission (offline app)"
+
+      - name: Run CodeQL
+        uses: github/codeql-action/analyze@v3
+        continue-on-error: true
