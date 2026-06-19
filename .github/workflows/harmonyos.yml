@@ -1,0 +1,128 @@
+name: Build HarmonyOS HAP
+
+on:
+  push:
+    paths:
+      - 'harmonyos/**'
+    tags:
+      - 'v*'
+  pull_request:
+    paths:
+      - 'harmonyos/**'
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build Type'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+
+jobs:
+  build-harmonyos:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: harmonyos/juezhao_authenticator
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Setup Java and tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openjdk-17-jdk unzip
+          echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+
+      - name: Install ohpm
+        run: |
+          cd $HOME
+          curl -s https://repo.huaweicloud.com/ohpm-cli/latest/ohpm-linux-x64.sh -o ohpm.sh
+          chmod +x ohpm.sh
+          ./ohpm.sh --registry https://repo.huaweicloud.com/repository/npm/
+          echo "$HOME/ohpm/bin" >> $GITHUB_PATH
+
+      - name: Verify ohpm
+        run: ohpm --version
+
+      - name: Install dependencies
+        run: ohpm install
+
+      - name: Build HAP
+        run: |
+          BUILD_TYPE="${{ github.event_name == 'workflow_dispatch' && inputs.build_type || 'debug' }}"
+          if [ "$BUILD_TYPE" = "release" ]; then
+            npx hvigor assembleRelease --no-daemon
+          else
+            npx hvigor assembleDebug --no-daemon
+          fi
+
+      - name: Find HAP files
+        id: find_hap
+        run: |
+          HAP_FILES=$(find ./entry/build -name "*.hap" 2>/dev/null)
+          echo "HAP files found:"
+          echo "$HAP_FILES"
+          if [ -n "$HAP_FILES" ]; then
+            echo "hap_found=true" >> $GITHUB_OUTPUT
+            echo "hap_count=$(echo "$HAP_FILES" | wc -l)" >> $GITHUB_OUTPUT
+          else
+            echo "hap_found=false" >> $GITHUB_OUTPUT
+            echo "hap_count=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload HAP artifact
+        if: steps.find_hap.outputs.hap_found == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: juezhao-authenticator-harmonyos-hap
+          path: ./entry/build/**/*.hap
+          retention-days: 30
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/v') && steps.find_hap.outputs.hap_found == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./entry/build/**/*.hap
+          tag_name: ${{ github.ref_name }}-harmonyos
+          name: ${{ github.ref_name }} (HarmonyOS)
+          body: |
+            ## 觉照验证器（HarmonyOS NEXT 版）
+
+            **版本**: ${{ github.ref_name }}
+            **平台**: HarmonyOS NEXT
+            **包名**: com.juezhao.authenticator
+
+            ### 下载说明
+
+            下载 `.hap` 文件后，通过 hdc 安装：
+
+            ```bash
+            hdc install juezhao_authenticator_entry-release-signed.hap
+            ```
+
+            ### 支持设备
+
+            - HarmonyOS NEXT（纯血鸿蒙）
+            - 不兼容旧版鸿蒙（2/3/4）
+
+            ### 变更日志
+
+            见 [CHANGELOG.md](./CHANGELOG.md)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build summary
+        run: |
+          echo "## HarmonyOS Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Build type: ${{ github.event_name == 'workflow_dispatch' && inputs.build_type || 'debug' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- HAP found: ${{ steps.find_hap.outputs.hap_found }}" >> $GITHUB_STEP_SUMMARY
+          echo "- HAP count: ${{ steps.find_hap.outputs.hap_count }}" >> $GITHUB_STEP_SUMMARY

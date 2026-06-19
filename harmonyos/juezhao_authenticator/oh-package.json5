@@ -1,0 +1,7 @@
+{
+  "name": "juezhao-authenticator",
+  "version": "1.0.0",
+  "description": "觉照验证器 - 离线双因素验证器",
+  "main": "",
+  "license": "Apache-2.0"
+}
