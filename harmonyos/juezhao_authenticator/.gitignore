@@ -1,0 +1,9 @@
+/harmonyos/juezhao_authenticator/entry/build
+/build
+/.hvigor
+/.idea
+/.ohos
+/local.properties
+*.iml
+*.log
+.DS_Store
