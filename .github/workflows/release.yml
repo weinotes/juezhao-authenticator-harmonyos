@@ -10,10 +10,15 @@ on:
         description: 'Version (e.g. 1.0.0)'
         required: true
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build HAP
     runs-on: ubuntu-latest
+    outputs:
+      hap_found: ${{ steps.find_hap.outputs.hap_found }}
     defaults:
       run:
         working-directory: harmonyos/juezhao_authenticator
@@ -37,37 +42,53 @@ jobs:
         run: |
           cd $RUNNER_TEMP
           
-          # 从华为官方镜像下载 ohpm
-          curl -L -o ohpm.tar.gz "https://ohpm.volccdn.com/ohpm/cli/5.1.2/ohpm-cli-linux-x64-5.1.2.tar.gz" 2>/dev/null || \
-          curl -L -o ohpm.tar.gz "https://repo.huaweicloud.com/ohpm-cli/5.1.2/ohpm-linux-x64.tar.gz" 2>/dev/null || \
-          echo "ohpm download failed, will try build without ohpm"
+          echo "Downloading ohpm CLI..."
           
-          if [ -f ohpm.tar.gz ] && [ -s ohpm.tar.gz ]; then
+          # 源1: 字节跳动镜像
+          curl -fsSL "https://ohpm.volccdn.com/ohpm/cli/5.1.2/ohpm-cli-linux-x64-5.1.2.tar.gz" -o ohpm.tar.gz 2>/dev/null || true
+          
+          # 源2: 华为镜像
+          if [ ! -s ohpm.tar.gz ]; then
+            curl -fsSL "https://repo.huaweicloud.com/ohpm-cli/5.1.2/ohpm-linux-x64.tar.gz" -o ohpm.tar.gz 2>/dev/null || true
+          fi
+          
+          if [ -s ohpm.tar.gz ]; then
+            echo "ohpm downloaded successfully"
             tar -xzf ohpm.tar.gz || true
-            echo "$RUNNER_TEMP/ohpm-cli-5.1.2/bin" >> $GITHUB_PATH || true
-            echo "$RUNNER_TEMP/ohpm/bin" >> $GITHUB_PATH || true
-            ls -la $RUNNER_TEMP/ | grep ohpm || true
+            OHPM_BIN=$(find $RUNNER_TEMP -name "ohpm" -type f 2>/dev/null | head -1)
+            if [ -n "$OHPM_BIN" ]; then
+              OHPM_DIR=$(dirname "$OHPM_BIN")
+              echo "$OHPM_DIR" >> $GITHUB_PATH
+              chmod +x "$OHPM_BIN"
+              echo "ohpm found at: $OHPM_BIN"
+            else
+              echo "WARN: ohpm binary not found in archive"
+            fi
+          else
+            echo "WARN: Could not download ohpm CLI"
           fi
 
       - name: Install dependencies
         run: |
-          which ohpm 2>/dev/null && ohpm install || echo "ohpm not available, skipping deps"
-          
-      - name: Attempt Build
+          if command -v ohpm &> /dev/null; then
+            ohpm config set registry https://repo.huaweicloud.com/repository/npm/
+            ohpm install
+          else
+            echo "SKIP: ohpm not available"
+          fi
+
+      - name: Build HAP
         id: build
+        continue-on-error: true
         run: |
-          BUILD_TYPE="release"
-          
-          # 尝试用 hvigor 构建
           if command -v hvigor &> /dev/null; then
             hvigor assembleRelease --no-daemon
           elif [ -f "hvigorw" ]; then
             chmod +x hvigorw
             ./hvigorw assembleRelease --no-daemon
           else
-            echo "BUILD_SKIPPED=true" >> $GITHUB_OUTPUT
-            echo "No HarmonyOS build tools available in CI"
-            echo "Build must be done locally with DevEco Studio"
+            echo "No HarmonyOS build tools available"
+            echo "HAP must be built locally with DevEco Studio"
           fi
 
       - name: Find HAP files
@@ -80,7 +101,7 @@ jobs:
             echo "$HAP_FILES"
           else
             echo "hap_found=false" >> $GITHUB_OUTPUT
-            echo "No HAP files found (expected if build tools unavailable)"
+            echo "No HAP files found"
           fi
 
       - name: Upload HAP artifact
@@ -88,52 +109,73 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: juezhao-authenticator-harmonyos-${{ github.ref_name }}
-          path: harmonyos/juezhao_authenticator/entry/build/**/*.hap
+          path: ./entry/build/**/*.hap
           retention-days: 90
 
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          body: |
-            ## 觉照验证器 ${{ github.ref_name }}
-            
-            **作者**: Davey Wong  
-            **平台**: HarmonyOS NEXT  
-            **包名**: com.juezhao.authenticator  
-            
-            ### 下载安装
-            
-            1. 下载 `.hap` 文件
-            2. 通过 hdc 安装：`hdc install juezhao_authenticator_entry-release-signed.hap`
-            
-            ### 支持设备
-            
-            - HarmonyOS NEXT（纯血鸿蒙）
-            
-            ### 安全说明
-            
-            - 无网络权限，完全离线运行
-            - HUKS AES-256-GCM 加密存储
-            - 开源代码可审计
-            
-            ### 变更日志
-            
-            见 [CHANGELOG.md](./harmonyos/juezhao_authenticator/CHANGELOG.md)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  notify:
-    name: Release Summary
+  release:
+    name: Create Release
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
+
     steps:
-      - name: Summary
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download HAP artifact
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: juezhao-authenticator-harmonyos-${{ github.ref_name }}
+          path: ./dist
+
+      - name: Check HAP files
+        id: check_hap
+        run: |
+          if [ -d "./dist" ] && [ -n "$(find ./dist -name '*.hap' 2>/dev/null)" ]; then
+            echo "hap_available=true" >> $GITHUB_OUTPUT
+            find ./dist -name "*.hap" -exec ls -lh {} \;
+          else
+            echo "hap_available=false" >> $GITHUB_OUTPUT
+            echo "No HAP artifact available"
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: ${{ steps.check_hap.outputs.hap_available == 'true' && './dist/**/*.hap' || '' }}
+          body: |
+            ## 觉照验证器 / Juezhao Authenticator ${{ github.ref_name }}
+            
+            **作者 / Author**: Davey Wong  
+            **平台 / Platform**: HarmonyOS NEXT  
+            **包名 / Package**: com.juezhao.authenticator  
+            
+            ### 下载安装 / Installation
+            
+            ${{ steps.check_hap.outputs.hap_available == 'true' && '1. 下载 `.hap` 文件 / Download the `.hap` file' || '⚠️ HAP 文件需在本地使用 DevEco Studio 构建 / HAP must be built locally with DevEco Studio' }}
+            
+            ```bash
+            hdc install juezhao_authenticator_entry-release-signed.hap
+            ```
+            
+            ### 安全说明 / Security
+            
+            - 无网络权限，完全离线运行 / No network permission, fully offline
+            - HUKS AES-256-GCM 加密存储 / Hardware-backed encrypted storage
+            - 开源代码可审计 / Open source, auditable code
+            
+            ### 变更日志 / Changelog
+            
+            See [CHANGELOG.md](./harmonyos/juezhao_authenticator/CHANGELOG.md)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release summary
         run: |
           echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
           echo "- Version: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- Author: Davey Wong" >> $GITHUB_STEP_SUMMARY
           echo "- Platform: HarmonyOS NEXT" >> $GITHUB_STEP_SUMMARY
-          echo "- HAP built: ${{ needs.build.outputs.hap_found || 'N/A' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- HAP available: ${{ steps.check_hap.outputs.hap_available }}" >> $GITHUB_STEP_SUMMARY
