@@ -123,7 +123,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download HAP artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: juezhao-authenticator-harmonyos-${{ github.ref_name }}
