@@ -19,7 +19,7 @@
 
 我们高度重视安全问题。如发现安全漏洞，请通过以下方式私下报告：
 
-**📧 安全邮箱：** security@juezhaotrade.com
+**📧 安全邮箱：** wgwcko@gmail.com
 
 **⚠️ 重要提示：**
 - 请勿在公开渠道（GitHub Issues、社交媒体等）报告安全漏洞
@@ -134,4 +134,4 @@ SQLite 数据库存储（密文）
 
 感谢您帮助维护觉照验证器的安全性！
 
-*For English support, please contact: security@juezhaotrade.com*
+*For English support, please contact: wgwcko@gmail.com*

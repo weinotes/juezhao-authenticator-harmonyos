@@ -153,7 +153,7 @@ juezhao_authenticator/
 本项目已申请知识产权保护，详见 [PATENTS.md](PATENTS.md)。
 
 ### 商标
-"觉照验证器"、"juezhao-authenticator" 及相关标识是觉照科技的注册商标。
+"觉照验证器"、"juezhao-authenticator" 及相关标识是Davey Wong的注册商标。
 
 ### 开源许可
 本项目基于 Apache License 2.0 开源，详见 [LICENSE](LICENSE)。
@@ -195,9 +195,9 @@ juezhao_authenticator/
 
 ## 联系方式 | Contact
 
-- 官网：https://www.juezhaotrade.com
+- 官网：https://guangweiblog.com
 - GitHub：https://github.com/weinotes/juezhao-authenticator-harmonyos
-- 邮箱：contact@juezhaotrade.com
+- 邮箱：wgwcko@gmail.com
 
 ---
 

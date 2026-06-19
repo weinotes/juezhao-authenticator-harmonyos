@@ -1,7 +1,7 @@
 {
   "app": {
     "bundleName": "com.juezhao.authenticator",
-    "vendor": "juezhao",
+    "vendor": "DaveyWong",
     "versionCode": 1,
     "versionName": "1.0.0",
     "icon": "$media:app_icon",
